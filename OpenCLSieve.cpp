@@ -254,7 +254,7 @@ static int64_t run_variation_goldbach_kernel(cl::Device& device, cl::Platform& p
             "uint square_number_one = 1;\n"
             "outputs[prime] = 1;\n"
             "uint result;\n"
-            "while(square_number_one * square_number_one + 2 < number_outputs - prime){\n"
+            "while(2 + square_number_one * square_number_one + prime < number_outputs){\n"
                 "uint square_number_two = 1;\n"
                 "while(true){\n"
                     "result  = prime + square_number_one * square_number_one + square_number_two * square_number_two;\n"
