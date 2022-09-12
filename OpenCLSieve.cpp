@@ -119,6 +119,8 @@ static std::tuple<std::vector<uint32_t>,uint32_t> run_sieve_kernel(cl::Device& d
 
     cl::Event kernel_finished;
 
+    CHECK_CALL(queue.enqueueFillBuffer(mem_buf, 0, 0, max_number * sizeof(uint32_t)));
+
     CHECK_CALL(queue.enqueueNDRangeKernel(kernel, cl::NullRange, cl::NDRange(max_number - 2), cl::NullRange,nullptr,&kernel_finished));
     
     CHECK_CALL(kernel_finished.wait());
@@ -199,7 +201,7 @@ static int64_t run_square_kernel(cl::Device& device, cl::Platform& platform, con
     cl::Event kernel_finished;
 
     CHECK_CALL(queue.enqueueWriteBuffer(prime_buf, CL_TRUE, 0, primes.size() * sizeof(uint32_t), primes.data()));
-
+    CHECK_CALL(queue.enqueueFillBuffer(mem_buf, 0, 0, max_number * sizeof(uint32_t)));
     // one work item (i.e. GPU task) is responsible for one prime, iterating all factors
     CHECK_CALL(queue.enqueueNDRangeKernel(kernel, cl::NullRange, cl::NDRange(primes.size()), cl::NDRange(WORK_QUEUE_SIZE), nullptr, &kernel_finished));
 
