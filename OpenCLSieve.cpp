@@ -4,7 +4,7 @@
 #include "OpenCLSieve.h"
 
 #define CHECK_CALL(call) do{cl_int res = (call); if(res != CL_SUCCESS){ fprintf(stderr,"OpenCL call failed in line %u with code %u", __LINE__, -res); exit(1);}} while(0);
-#define WORK_QUEUE_SIZE 64
+static size_t WORK_QUEUE_SIZE = 64;
 
 static std::tuple<cl::Device,cl::Platform> get_device() {
     std::vector<cl::Platform> platforms;
@@ -52,10 +52,12 @@ static std::tuple<cl::Device,cl::Platform> get_device() {
 
     if (gpu_found) {
         std::cout << "Using last GPU device \"" << gpu_device_name << "\"!\n";
+        WORK_QUEUE_SIZE = gpu_device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
         return { gpu_device,gpu_platform };
     }
     if (cpu_found) {
         std::cout << "Using last CPU device \"" << cpu_device_name << "\"!\n";
+        WORK_QUEUE_SIZE = cpu_device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
         return { cpu_device, cpu_platform };
     }
     std::cerr << "No OpenCL device found!\n";
@@ -160,6 +162,7 @@ static void extend_primes(std::vector<uint32_t>& primes) {
 }
 
 static int64_t run_square_kernel(cl::Device& device, cl::Platform& platform, const uint32_t max_number,  const std::vector<uint32_t>& primes, const std::string& src) {
+    // should be even, since primes was padded earlier
     auto start = std::chrono::high_resolution_clock::now();
     std::chrono::steady_clock::time_point end;
     std::vector<cl::Device> devices;
@@ -190,6 +193,7 @@ static int64_t run_square_kernel(cl::Device& device, cl::Platform& platform, con
     CHECK_CALL(kernel.setArg(2, max_number));
 
 
+
     cl::CommandQueue queue(context, device);
 
     cl::Event kernel_finished;
@@ -218,17 +222,23 @@ static int64_t run_square_kernel(cl::Device& device, cl::Platform& platform, con
 static int64_t run_original_goldbach_kernel(cl::Device& device, cl::Platform& platform, const uint32_t maxNumber, const std::vector<uint32_t>& primes) {
     const std::string src = "#define __CL_ENABLE_EXCEPTIONS\n"
         "void kernel square_sieve(__global uint * primes, __global uint* outputs, const uint number_outputs) {\n"
-        "uint start_offset = 1;\n"
-        "uint end_offset = number_outputs;\n"
-        "const uint prime = primes[get_global_id(0)];\n"
-        "uint square_number = 1;\n"
-        "outputs[prime] = 1;\n"
-        "uint result;\n"
-        "do{\n"
-        "result  = prime + 2 * square_number * square_number;\n"
-        "square_number ++;\n"
-        "outputs[result] = 1;\n"
-        "} while(result < number_outputs);\n"
+            "uint start_offset = 1;\n"
+            "uint end_offset = number_outputs;\n"
+            "uint prime_index = get_global_id(0);\n"
+            "const uint prime = primes[prime_index];\n"
+            "uint square_number = 1;\n"
+            "outputs[prime] = 1;\n"
+            "uint result;\n"
+            "while(true){\n"
+                "result  = prime + 2 * square_number * square_number;\n"
+                "square_number ++;\n"
+                "if(result < number_outputs){\n"
+                    "outputs[result] = 1;\n"
+                "}\n"
+                "else {\n"
+                    "break;\n"
+                "}\n"
+            "}\n"
         "}\n";
     return run_square_kernel(device, platform, maxNumber, primes, src);
 
@@ -237,28 +247,34 @@ static int64_t run_original_goldbach_kernel(cl::Device& device, cl::Platform& pl
 static int64_t run_variation_goldbach_kernel(cl::Device& device, cl::Platform& platform, const uint32_t maxNumber, const std::vector<uint32_t>& primes) {
     const std::string src = "#define __CL_ENABLE_EXCEPTIONS\n"
         "void kernel square_sieve(__global uint * primes, __global uint* outputs, const uint number_outputs) {\n"
-        "uint start_offset = 1;\n"
-        "uint end_offset = number_outputs;\n"
-        "const uint prime = primes[get_global_id(0)];\n"
-        "uint square_number_one = 1;\n"
-        "outputs[prime] = 1;\n"
-        "uint result;\n"
-        "while(square_number_one * square_number_one < number_outputs - prime){\n"
-            "uint square_number_two = 1;\n"
-            "do{\n"
-                "result  = prime + square_number_one * square_number_one + square_number_two * square_number_two;\n"
-                "square_number_two ++;\n"
-                "outputs[result] = 1;\n"
-            "} while(result < number_outputs);\n"
-            "square_number_one ++;\n"
-        "}\n"
+            "uint start_offset = 1;\n"
+            "uint end_offset = number_outputs;\n"
+            "const uint prime_index = get_global_id(0);\n"
+            "const uint prime = primes[prime_index];\n"
+            "uint square_number_one = 1;\n"
+            "outputs[prime] = 1;\n"
+            "uint result;\n"
+            "while(square_number_one * square_number_one + 2 < number_outputs - prime){\n"
+                "uint square_number_two = 1;\n"
+                "while(true){\n"
+                    "result  = prime + square_number_one * square_number_one + square_number_two * square_number_two;\n"
+                    "square_number_two ++;\n"
+                    "if(result < number_outputs){\n"
+                        "outputs[result] = 1;\n"
+                    "}\n"
+                    "else{\n"
+                        "break;\n"
+                    "}\n"
+                "}\n"
+                "square_number_one ++;\n"
+            "}\n"
         "}\n";
     return run_square_kernel(device, platform, maxNumber, primes, src);
 }
 
 int main(int argc, const char *argv[])
 {
-    const int default_n = 1000000;
+    const int default_n = 10000;
     int N = default_n;
     int number_primes;
     int64_t smallest_square, smallest_square_varied;
