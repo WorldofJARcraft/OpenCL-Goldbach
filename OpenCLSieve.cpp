@@ -180,7 +180,7 @@ static int64_t run_square_kernel(cl::Device& device, cl::Platform& platform, con
     }
 
     // temporary buffer for the kernel to store marks in, 0-initialized
-    cl::Buffer mem_buf(context, CL_MEM_READ_WRITE, max_number * sizeof(uint32_t)), prime_buf(context, CL_MEM_READ_WRITE, primes.size() * sizeof(uint32_t));
+    cl::Buffer mem_buf(context, CL_MEM_READ_WRITE, max_number * sizeof(uint32_t)), prime_buf(context, CL_MEM_WRITE_ONLY, primes.size() * sizeof(uint32_t));
     cl::Kernel kernel(program, "square_sieve", &err);
 
     if (err != CL_SUCCESS) {
